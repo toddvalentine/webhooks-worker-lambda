@@ -1,0 +1,40 @@
+name: Deploy
+
+on:
+  #push:
+    #branches:
+      #- main
+  workflow_dispatch:  
+      
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: deploy
+    
+    steps:
+      - name: install npm
+        run: 'sudo apt update -y && sudo apt install nodejs npm -y'
+        
+      - name: install cdk
+        run: 'sudo npm install -g aws-cdk@v2.2.0'
+        
+      - name: checkout
+        uses: actions/checkout@v2  
+        
+      - name: install dependencies
+        run: 'npm install'
+        
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+          
+      - name: cdk synth
+        run: cdk synth
+        
+      - name: cdk deploy
+        run: cdk deploy
+    
+
