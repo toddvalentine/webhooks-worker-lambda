@@ -18,43 +18,47 @@ type ServiceCaller struct {
 	client *http.Client
 }
 
+type HandlerFn func(context.Context, events.SQSEvent) error
+
 var svc ServiceCaller
 
-func Handler(ctx context.Context, e events.SQSEvent) error {
-	var g errgroup.Group
+func Handler(svc ServiceCaller) HandlerFn {
+	return func(ctx context.Context, e events.SQSEvent) error {
+		var g errgroup.Group
 
-	numWorkers := runtime.NumCPU()
-	recordsChan := make(chan events.SQSMessage, numWorkers)
-	resultsChan := make(chan int)
+		numWorkers := runtime.NumCPU()
+		recordsChan := make(chan events.SQSMessage, numWorkers)
+		resultsChan := make(chan int)
 
-	for i := 0; i < cap(recordsChan); i++ {
-		g.Go(func() error {
-			if err := worker(recordsChan, resultsChan); err != nil {
-				return err
-			}
-			return nil
-		})
-	}
-
-	go func() {
-		for _, r := range e.Records {
-			log.Printf("sending to recordsChan: %s\n", r.Body)
-			recordsChan <- r
+		for i := 0; i < cap(recordsChan); i++ {
+			g.Go(func() error {
+				if err := worker(svc, recordsChan, resultsChan); err != nil {
+					return err
+				}
+				return nil
+			})
 		}
-	}()
 
-	for i := 0; i < len(e.Records); i++ {
-		r := <-resultsChan
-		log.Printf("results channel output: %d\n", r)
+		go func() {
+			for _, r := range e.Records {
+				log.Printf("sending to recordsChan: %s\n", r.Body)
+				recordsChan <- r
+			}
+		}()
+
+		for i := 0; i < len(e.Records); i++ {
+			r := <-resultsChan
+			log.Printf("results channel output: %d\n", r)
+		}
+
+		close(recordsChan)
+		close(resultsChan)
+
+		return g.Wait()
 	}
-
-	close(recordsChan)
-	close(resultsChan)
-
-	return g.Wait()
 }
 
-func worker(recordsChan <-chan events.SQSMessage, resultsChan chan<- int) error {
+func worker(svc ServiceCaller, recordsChan <-chan events.SQSMessage, resultsChan chan<- int) error {
 	for r := range recordsChan {
 		endpoint := r.MessageAttributes["Endpoint"].StringValue
 		signature := r.MessageAttributes["Signature"].StringValue
@@ -78,7 +82,7 @@ func (sc ServiceCaller) callService(ctx context.Context, endpoint string, signat
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application-json")
-	req.Header.Set("X-vtypeio-Hmac-SHA256", signature)
+	req.Header.Set("X-Flipcause-Hmac-SHA256", signature)
 
 	resp, err := sc.client.Do(req)
 	if err != nil {
@@ -102,5 +106,5 @@ func main() {
 		},
 	}
 
-	lambda.Start(Handler)
+	lambda.Start(Handler(svc))
 }
