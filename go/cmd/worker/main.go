@@ -82,7 +82,7 @@ func (sc ServiceCaller) callService(ctx context.Context, endpoint string, signat
 	}
 	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", "application-json")
-	req.Header.Set("X-Flipcause-Hmac-SHA256", signature)
+	req.Header.Set("X-Vtypeio-Hmac-SHA256", signature)
 
 	resp, err := sc.client.Do(req)
 	if err != nil {
